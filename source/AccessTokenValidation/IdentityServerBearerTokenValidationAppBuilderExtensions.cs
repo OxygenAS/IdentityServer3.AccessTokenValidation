@@ -133,7 +133,9 @@ namespace Owin
                 {
                     bearerOptions.AccessTokenProvider = new ValidationEndpointTokenProvider(options, loggerFactory);
                 }
-
+                //I'm not sure Realm is the correct way to use this enforcement, but it's available for now. If needing realm for anything else
+                //expand options with Issuer Enforcement.
+                bearerOptions.Realm = options.AllowOnlyTokenFromIssuer;;
                 return bearerOptions;
 
             }, true);

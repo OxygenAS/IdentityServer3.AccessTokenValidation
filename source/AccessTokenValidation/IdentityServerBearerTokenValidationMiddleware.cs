@@ -21,6 +21,7 @@ using Microsoft.Owin.Security.OAuth;
 using Owin;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -88,57 +89,45 @@ namespace IdentityServer3.AccessTokenValidation
         {
             var context = new OwinContext(environment);
 
-            var token = await GetTokenAsync(context)
-                .ConfigureAwait(false);
-
+            var token = await GetTokenAsync(context).ConfigureAwait(false);
             if (token == null)
             {
-                await _next(environment)
-                    .ConfigureAwait(true);
-
+                await _next(environment).ConfigureAwait(true);
                 return;
             }
 
-            context.Set("idsrv:tokenvalidation:token", token);
-
-            // seems to be a JWT
-            if (token.Contains('.'))
+            if (IsIdentityServerToken(token))
             {
-                // see if local validation is setup
-                if (_localValidationFunc != null)
+                context.Set("idsrv:tokenvalidation:token", token);
+                //seems to be a JWT
+                if (token.Contains('.'))
                 {
-                    await _localValidationFunc.Value(environment)
-                        .ConfigureAwait(false);
-
-                    return;
+                    // see if local validation is setup
+                    if (_localValidationFunc != null)
+                    {
+                        await _localValidationFunc.Value(environment).ConfigureAwait(false);
+                        return;
+                    }
+                    // otherwise use validation endpoint
+                    if (_endpointValidationFunc != null)
+                    {
+                        await _endpointValidationFunc.Value(environment).ConfigureAwait(false);
+                        return;
+                    }
+                    _logger.WriteWarning("No validator configured for JWT token");
                 }
-                // otherwise use validation endpoint
-                if (_endpointValidationFunc != null)
+                else
                 {
-                    await _endpointValidationFunc.Value(environment)
-                        .ConfigureAwait(false);
-
-                    return;
+                    // use validation endpoint
+                    if (_endpointValidationFunc != null)
+                    {
+                        await _endpointValidationFunc.Value(environment).ConfigureAwait(false);
+                        return;
+                    }
+                    _logger.WriteWarning("No validator configured for reference token");
                 }
-
-                _logger.WriteWarning("No validator configured for JWT token");
             }
-            else
-            {
-                // use validation endpoint
-                if (_endpointValidationFunc != null)
-                {
-                    await _endpointValidationFunc.Value(environment)
-                        .ConfigureAwait(false);
-
-                    return;
-                }
-
-                _logger.WriteWarning("No validator configured for reference token");
-            }
-
-            await _next(environment)
-                .ConfigureAwait(true);
+            await _next(environment).ConfigureAwait(true);
         }
 
         private async Task<string> GetTokenAsync(OwinContext context)
@@ -169,8 +158,21 @@ namespace IdentityServer3.AccessTokenValidation
 
                 return requestTokenContext.Token;
             }
-
+         
             return requestToken;
+        }
+
+        private bool IsIdentityServerToken(string requestToken)
+        {
+            if (string.IsNullOrWhiteSpace(requestToken))
+                return false;
+
+            var realm = _options.EndpointValidationOptions.Value.Realm;
+
+            var handler = new JwtSecurityTokenHandler();
+            var jsonToken = handler.ReadToken(requestToken);
+
+            return realm == jsonToken.Issuer;
         }
     }
 }

@@ -223,5 +223,7 @@ namespace IdentityServer3.AccessTokenValidation
         /// The valid audiences.
         /// </value>
         public IEnumerable<string> ValidAudiences { get; set; }
-  }
+
+        public string AllowOnlyTokenFromIssuer { get; set; }
+    }
 }
